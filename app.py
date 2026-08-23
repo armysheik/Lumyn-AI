@@ -1,19 +1,42 @@
 import streamlit as st
+from database import create_tables, save_quiz, save_flashcards
+
 import os
 import sys
 import json
+
 
 # ============================================================
 # PATH SETUP
 # ============================================================
 
+create_tables()
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PDF_QUIZ_DIR = os.path.join(BASE_DIR, "modules", "pdf_quiz")
+
+PDF_QUIZ_DIR = os.path.join(
+    BASE_DIR,
+    "modules",
+    "pdf_quiz"
+)
+
+FLASHCARD_DIR = os.path.join(
+    BASE_DIR,
+    "modules",
+    "flashcards"
+)
 
 sys.path.insert(0, PDF_QUIZ_DIR)
+sys.path.insert(0, FLASHCARD_DIR)
+
+
+# ============================================================
+# IMPORT PROJECT MODULES
+# ============================================================
 
 from pdf_extractor import extract_text_from_pdf
 from quiz_generator import generate_quiz
+from flashcard_generator import generate_flashcards
 
 
 # ============================================================
@@ -34,6 +57,9 @@ st.set_page_config(
 if "quiz" not in st.session_state:
     st.session_state.quiz = None
 
+if "flashcards" not in st.session_state:
+    st.session_state.flashcards = None
+
 if "submitted" not in st.session_state:
     st.session_state.submitted = False
 
@@ -48,12 +74,12 @@ if "score" not in st.session_state:
 st.title("🧠 Lumyn-AI")
 
 st.subheader(
-    "📄 AI-Powered PDF Quiz Generator"
+    "📄 AI-Powered PDF Quiz & Flashcard Generator"
 )
 
 st.write(
     "Upload a PDF and automatically generate "
-    "an interactive MCQ quiz using AI."
+    "interactive quizzes and flashcards using AI."
 )
 
 st.divider()
@@ -100,6 +126,7 @@ if uploaded_file is not None:
     )
 
     try:
+
         extracted_text = extract_text_from_pdf(
             temp_pdf_path
         )
@@ -133,13 +160,14 @@ if uploaded_file is not None:
                 height=300
             )
 
-
         st.divider()
 
 
         # ====================================================
-        # NUMBER OF QUESTIONS
+        # QUIZ SECTION
         # ====================================================
+
+        st.header("📝 Quiz Generator")
 
         num_questions = st.slider(
             "📝 Number of questions",
@@ -147,11 +175,6 @@ if uploaded_file is not None:
             max_value=10,
             value=3
         )
-
-
-        # ====================================================
-        # GENERATE QUIZ BUTTON
-        # ====================================================
 
         generate_button = st.button(
             "🚀 Generate Quiz",
@@ -172,9 +195,9 @@ if uploaded_file is not None:
                     num_questions
                 )
 
-                # --------------------------------------------
+                # ------------------------------------------------
                 # Convert JSON string if necessary
-                # --------------------------------------------
+                # ------------------------------------------------
 
                 if isinstance(quiz, str):
 
@@ -195,9 +218,9 @@ if uploaded_file is not None:
                     quiz = json.loads(quiz)
 
 
-                # --------------------------------------------
+                # ------------------------------------------------
                 # Validate quiz
-                # --------------------------------------------
+                # ------------------------------------------------
 
                 if not isinstance(quiz, list):
 
@@ -207,9 +230,16 @@ if uploaded_file is not None:
                     )
 
 
-                # --------------------------------------------
-                # Store quiz
-                # --------------------------------------------
+                # ------------------------------------------------
+                # Save quiz to database
+                # ------------------------------------------------
+
+                save_quiz(quiz)
+
+
+                # ------------------------------------------------
+                # Store quiz in session
+                # ------------------------------------------------
 
                 st.session_state.quiz = quiz
 
@@ -229,6 +259,108 @@ if uploaded_file is not None:
                 )
 
 
+        # ====================================================
+        # FLASHCARD SECTION
+        # ====================================================
+
+        st.divider()
+
+        st.header("🧠 Flashcard Generator")
+
+        num_flashcards = st.slider(
+            "🧠 Number of flashcards",
+            min_value=1,
+            max_value=10,
+            value=5
+        )
+
+        flashcard_button = st.button(
+            "🧠 Generate Flashcards",
+            use_container_width=True
+        )
+
+
+        if flashcard_button:
+
+            st.info(
+                "🤖 AI is generating your flashcards..."
+            )
+
+            try:
+
+                flashcards = generate_flashcards(
+                    extracted_text,
+                    num_flashcards
+                )
+
+
+                # ------------------------------------------------
+                # Convert JSON string if necessary
+                # ------------------------------------------------
+
+                if isinstance(flashcards, str):
+
+                    flashcards = flashcards.strip()
+
+                    flashcards = flashcards.replace(
+                        "```json",
+                        ""
+                    )
+
+                    flashcards = flashcards.replace(
+                        "```",
+                        ""
+                    )
+
+                    flashcards = flashcards.strip()
+
+                    flashcards = json.loads(
+                        flashcards
+                    )
+
+
+                # ------------------------------------------------
+                # Validate flashcards
+                # ------------------------------------------------
+
+                if not isinstance(
+                    flashcards,
+                    list
+                ):
+
+                    raise ValueError(
+                        "Flashcard format is invalid. "
+                        "Expected a list of flashcards."
+                    )
+
+
+                # ------------------------------------------------
+                # Save flashcards to SQLite
+                # ------------------------------------------------
+
+                save_flashcards(
+                    flashcards
+                )
+
+
+                # ------------------------------------------------
+                # Store flashcards in session
+                # ------------------------------------------------
+
+                st.session_state.flashcards = flashcards
+
+                st.success(
+                    "🎉 Flashcards generated successfully!"
+                )
+
+
+            except Exception as error:
+
+                st.error(
+                    f"❌ Flashcard generation failed:\n\n{error}"
+                )
+
+
 # ============================================================
 # DISPLAY QUIZ
 # ============================================================
@@ -241,7 +373,6 @@ if st.session_state.quiz is not None:
 
     quiz = st.session_state.quiz
 
-    # Store user answers
     answers = {}
 
 
@@ -261,7 +392,9 @@ if st.session_state.quiz is not None:
 
         options = question_data["options"]
 
-        option_keys = list(options.keys())
+        option_keys = list(
+            options.keys()
+        )
 
 
         selected = st.radio(
@@ -303,7 +436,7 @@ if st.session_state.quiz is not None:
 
 
 # ============================================================
-# RESULT
+# QUIZ RESULT
 # ============================================================
 
 if (
@@ -383,3 +516,40 @@ if (
             f"**Question {i + 1}:** "
             f"Correct Answer → **{correct}**"
         )
+
+
+# ============================================================
+# DISPLAY FLASHCARDS
+# ============================================================
+
+if st.session_state.flashcards is not None:
+
+    st.divider()
+
+    st.header("🧠 Your Flashcards")
+
+    flashcards = st.session_state.flashcards
+
+
+    for i, card in enumerate(
+        flashcards,
+        start=1
+    ):
+
+        st.markdown(
+            f"### 🗂️ Flashcard {i}"
+        )
+
+        st.write(
+            f"**Question:** {card['question']}"
+        )
+
+        with st.expander(
+            "👀 Show Answer"
+        ):
+
+            st.write(
+                card["answer"]
+            )
+
+        st.divider()

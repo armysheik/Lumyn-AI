@@ -21,3 +21,5 @@ uploaded_temp.pdf
 # OS files
 .DS_Store
 Thumbs.db
+# SQLite database
+*.db
