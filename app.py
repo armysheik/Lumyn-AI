@@ -54,6 +54,22 @@ if "submitted" not in st.session_state:
 if "score" not in st.session_state:
     st.session_state.score = 0
 
+# ------------------------------------------------------------
+# STUDY PROGRESS
+# ------------------------------------------------------------
+
+if "quizzes_taken" not in st.session_state:
+    st.session_state.quizzes_taken = 0
+
+if "total_questions" not in st.session_state:
+    st.session_state.total_questions = 0
+
+if "correct_answers" not in st.session_state:
+    st.session_state.correct_answers = 0
+
+if "flashcards_generated" not in st.session_state:
+    st.session_state.flashcards_generated = 0
+
 
 # ============================================================
 # HEADER
@@ -248,6 +264,11 @@ if uploaded_file is not None:
 
         st.header("📝 Quiz Generator")
 
+
+        # ----------------------------------------------------
+        # NUMBER OF QUESTIONS
+        # ----------------------------------------------------
+
         num_questions = st.slider(
             "📝 Number of questions",
             min_value=1,
@@ -255,23 +276,75 @@ if uploaded_file is not None:
             value=3
         )
 
+
+        # ----------------------------------------------------
+        # DIFFICULTY LEVEL
+        # ----------------------------------------------------
+
+        difficulty = st.selectbox(
+            "🎯 Select Difficulty",
+            [
+                "Easy",
+                "Medium",
+                "Hard"
+            ]
+        )
+
+
+        # ----------------------------------------------------
+        # QUIZ TYPE
+        # ----------------------------------------------------
+
+        quiz_type = st.selectbox(
+            "📝 Select Quiz Type",
+            [
+                "MCQ"
+            ]
+        )
+
+
+        # ----------------------------------------------------
+        # SHOW CURRENT SELECTION
+        # ----------------------------------------------------
+
+        st.info(
+            f"Selected: **{difficulty}** difficulty | "
+            f"**{quiz_type}** format | "
+            f"**{num_questions}** questions"
+        )
+
+
+        # ----------------------------------------------------
+        # GENERATE QUIZ BUTTON
+        # ----------------------------------------------------
+
         generate_button = st.button(
             "🚀 Generate Quiz",
             use_container_width=True
         )
 
 
+        # ====================================================
+        # GENERATE QUIZ
+        # ====================================================
+
         if generate_button:
 
             st.info(
-                "🤖 AI is generating your quiz..."
+                f"🤖 AI is generating a "
+                f"{difficulty} {quiz_type} quiz..."
             )
 
             try:
 
+                # ------------------------------------------------
+                # Generate quiz
+                # ------------------------------------------------
+
                 quiz = generate_quiz(
                     extracted_text,
-                    num_questions
+                    num_questions,
+                    difficulty
                 )
 
 
@@ -310,6 +383,13 @@ if uploaded_file is not None:
                     )
 
 
+                if len(quiz) == 0:
+
+                    raise ValueError(
+                        "AI returned an empty quiz."
+                    )
+
+
                 # ------------------------------------------------
                 # Save quiz to database
                 # ------------------------------------------------
@@ -322,11 +402,14 @@ if uploaded_file is not None:
                 # ------------------------------------------------
 
                 st.session_state.quiz = quiz
+
                 st.session_state.submitted = False
+
                 st.session_state.score = 0
 
+
                 st.success(
-                    "🎉 Quiz generated successfully!"
+                    f"🎉 {difficulty} quiz generated successfully!"
                 )
 
 
@@ -345,6 +428,11 @@ if uploaded_file is not None:
 
         st.header("🧠 Flashcard Generator")
 
+
+        # ----------------------------------------------------
+        # NUMBER OF FLASHCARDS
+        # ----------------------------------------------------
+
         num_flashcards = st.slider(
             "🧠 Number of flashcards",
             min_value=1,
@@ -352,11 +440,20 @@ if uploaded_file is not None:
             value=5
         )
 
+
+        # ----------------------------------------------------
+        # FLASHCARD BUTTON
+        # ----------------------------------------------------
+
         flashcard_button = st.button(
             "🧠 Generate Flashcards",
             use_container_width=True
         )
 
+
+        # ====================================================
+        # GENERATE FLASHCARDS
+        # ====================================================
 
         if flashcard_button:
 
@@ -412,6 +509,13 @@ if uploaded_file is not None:
                     )
 
 
+                if len(flashcards) == 0:
+
+                    raise ValueError(
+                        "AI returned empty flashcards."
+                    )
+
+
                 # ------------------------------------------------
                 # Save flashcards to SQLite
                 # ------------------------------------------------
@@ -426,6 +530,16 @@ if uploaded_file is not None:
                 # ------------------------------------------------
 
                 st.session_state.flashcards = flashcards
+
+
+                # ------------------------------------------------
+                # Update flashcard statistics
+                # ------------------------------------------------
+
+                st.session_state.flashcards_generated += len(
+                    flashcards
+                )
+
 
                 st.success(
                     "🎉 Flashcards generated successfully!"
@@ -464,9 +578,31 @@ if st.session_state.quiz is not None:
             f"### Question {i + 1}"
         )
 
+
+        # ----------------------------------------------------
+        # Display question
+        # ----------------------------------------------------
+
         st.write(
             question_data["question"]
         )
+
+
+        # ----------------------------------------------------
+        # Display difficulty
+        # ----------------------------------------------------
+
+        if "difficulty" in question_data:
+
+            st.caption(
+                f"🎯 Difficulty: "
+                f"{question_data['difficulty']}"
+            )
+
+
+        # ----------------------------------------------------
+        # Display options
+        # ----------------------------------------------------
 
         options = question_data["options"]
 
@@ -474,15 +610,20 @@ if st.session_state.quiz is not None:
             options.keys()
         )
 
+
         selected = st.radio(
             "Select your answer:",
             option_keys,
+
             format_func=lambda key:
                 f"{key}. {options[key]}",
+
             key=f"answer_{i}"
         )
 
+
         answers[i] = selected
+
 
         st.divider()
 
@@ -498,16 +639,35 @@ if st.session_state.quiz is not None:
 
         score = 0
 
+
         for i, question_data in enumerate(quiz):
 
             correct_answer = question_data["answer"]
+
 
             if answers[i] == correct_answer:
 
                 score += 1
 
+
+        # ----------------------------------------------------
+        # Save current result
+        # ----------------------------------------------------
+
         st.session_state.score = score
+
         st.session_state.submitted = True
+
+
+        # ----------------------------------------------------
+        # Update study statistics
+        # ----------------------------------------------------
+
+        st.session_state.quizzes_taken += 1
+
+        st.session_state.total_questions += len(quiz)
+
+        st.session_state.correct_answers += score
 
 
 # ============================================================
@@ -525,6 +685,7 @@ if (
 
     total = len(quiz)
 
+
     percentage = (
         score / total
     ) * 100
@@ -535,19 +696,43 @@ if (
     st.header("🎯 Quiz Result")
 
 
-    st.metric(
-        "Score",
-        f"{score} / {total}"
-    )
+    # --------------------------------------------------------
+    # Score
+    # --------------------------------------------------------
 
+    col1, col2, col3 = st.columns(3)
+
+
+    with col1:
+
+        st.metric(
+            "🏆 Score",
+            f"{score} / {total}"
+        )
+
+
+    with col2:
+
+        st.metric(
+            "📊 Accuracy",
+            f"{percentage:.1f}%"
+        )
+
+
+    with col3:
+
+        st.metric(
+            "🎯 Difficulty",
+            quiz[0].get("difficulty", "Medium")
+        )
+
+
+    # --------------------------------------------------------
+    # Progress
+    # --------------------------------------------------------
 
     st.progress(
         percentage / 100
-    )
-
-
-    st.write(
-        f"### 📊 Percentage: {percentage:.1f}%"
     )
 
 
@@ -561,11 +746,13 @@ if (
             "🏆 Excellent! Great job!"
         )
 
+
     elif percentage >= 50:
 
         st.warning(
             "👍 Good attempt! Keep practicing."
         )
+
 
     else:
 
@@ -615,9 +802,12 @@ if st.session_state.flashcards is not None:
             f"### 🗂️ Flashcard {i}"
         )
 
+
         st.write(
-            f"**Question:** {card['question']}"
+            f"**Question:** "
+            f"{card['question']}"
         )
+
 
         with st.expander(
             "👀 Show Answer"
@@ -627,4 +817,455 @@ if st.session_state.flashcards is not None:
                 card["answer"]
             )
 
+
         st.divider()
+
+
+# ============================================================
+# ADVANCED STUDY PROGRESS DASHBOARD
+# ============================================================
+
+st.divider()
+
+st.header("📊 Your Learning Dashboard")
+
+st.write(
+    "Track your learning performance and get personalized "
+    "insights based on your quiz and flashcard activity."
+)
+
+
+# ============================================================
+# GET PROGRESS DATA
+# ============================================================
+
+quizzes_taken = st.session_state.quizzes_taken
+
+total_questions = st.session_state.total_questions
+
+correct_answers = st.session_state.correct_answers
+
+flashcards_generated = st.session_state.flashcards_generated
+
+
+# ============================================================
+# CALCULATE ACCURACY
+# ============================================================
+
+if total_questions > 0:
+
+    accuracy = (
+        correct_answers / total_questions
+    ) * 100
+
+else:
+
+    accuracy = 0
+
+
+# ============================================================
+# LEARNING LEVEL
+# ============================================================
+
+if accuracy >= 90:
+
+    learning_level = "🏆 Master Learner"
+
+elif accuracy >= 80:
+
+    learning_level = "🌟 Advanced Learner"
+
+elif accuracy >= 60:
+
+    learning_level = "📚 Active Learner"
+
+elif accuracy > 0:
+
+    learning_level = "🌱 Beginner Learner"
+
+else:
+
+    learning_level = "🚀 Start Learning"
+
+
+# ============================================================
+# LEARNING OVERVIEW
+# ============================================================
+
+st.subheader("🎯 Learning Overview")
+
+
+col1, col2, col3 = st.columns(3)
+
+
+with col1:
+
+    st.metric(
+        "🏆 Learning Level",
+        learning_level
+    )
+
+
+with col2:
+
+    st.metric(
+        "📈 Accuracy",
+        f"{accuracy:.1f}%"
+    )
+
+
+with col3:
+
+    st.metric(
+        "🎯 Questions Mastered",
+        f"{correct_answers}/{total_questions}"
+    )
+
+
+# ============================================================
+# KNOWLEDGE MASTERY
+# ============================================================
+
+st.subheader("🧠 Overall Knowledge Mastery")
+
+
+st.progress(
+    min(accuracy / 100, 1.0)
+)
+
+
+if accuracy >= 80:
+
+    st.success(
+        f"🌟 Excellent! You have mastered "
+        f"{accuracy:.1f}% of the questions you've attempted."
+    )
+
+elif accuracy >= 60:
+
+    st.info(
+        f"📚 Good progress! Your current mastery "
+        f"is {accuracy:.1f}%. Keep practicing to reach 80%+."
+    )
+
+elif accuracy > 0:
+
+    st.warning(
+        f"🌱 You are building your knowledge. "
+        f"Your current mastery is {accuracy:.1f}%."
+    )
+
+else:
+
+    st.info(
+        "🚀 Generate your first quiz to begin "
+        "tracking your learning journey."
+    )
+
+
+# ============================================================
+# LEARNING ACTIVITY
+# ============================================================
+
+st.subheader("📚 Learning Activity")
+
+
+col1, col2, col3, col4 = st.columns(4)
+
+
+with col1:
+
+    st.metric(
+        "📝 Quizzes Taken",
+        quizzes_taken
+    )
+
+
+with col2:
+
+    st.metric(
+        "❓ Questions",
+        total_questions
+    )
+
+
+with col3:
+
+    st.metric(
+        "✅ Correct",
+        correct_answers
+    )
+
+
+with col4:
+
+    st.metric(
+        "🧠 Flashcards",
+        flashcards_generated
+    )
+
+
+# ============================================================
+# PERFORMANCE BREAKDOWN
+# ============================================================
+
+st.subheader("📊 Performance Breakdown")
+
+
+if total_questions > 0:
+
+    wrong_answers = (
+        total_questions - correct_answers
+    )
+
+    col1, col2 = st.columns(2)
+
+
+    with col1:
+
+        st.write("### ✅ Correct Answers")
+
+        st.progress(
+            correct_answers / total_questions
+        )
+
+        st.write(
+            f"{correct_answers} correct out of "
+            f"{total_questions} questions"
+        )
+
+
+    with col2:
+
+        st.write("### ❌ Questions to Review")
+
+        st.progress(
+            wrong_answers / total_questions
+        )
+
+        st.write(
+            f"{wrong_answers} questions need more practice"
+        )
+
+else:
+
+    st.info(
+        "Complete a quiz to see your performance breakdown."
+    )
+
+
+# ============================================================
+# SMART AI STUDY RECOMMENDATION
+# ============================================================
+
+st.subheader("💡 Smart Study Recommendation")
+
+
+if quizzes_taken == 0:
+
+    recommendation = (
+        "🚀 Start your learning journey by uploading a "
+        "document and generating your first quiz."
+    )
+
+elif accuracy >= 90:
+
+    recommendation = (
+        "🏆 Outstanding performance! Try Hard difficulty "
+        "questions to challenge yourself further."
+    )
+
+elif accuracy >= 80:
+
+    recommendation = (
+        "🌟 Great work! You have a strong understanding. "
+        "Try Hard difficulty and create flashcards for revision."
+    )
+
+elif accuracy >= 60:
+
+    recommendation = (
+        "📚 You're making good progress. Review your "
+        "incorrect answers and practice with Medium difficulty."
+    )
+
+else:
+
+    recommendation = (
+        "🌱 Focus on understanding the basics first. "
+        "Use Easy quizzes and review your flashcards regularly."
+    )
+
+
+st.info(recommendation)
+
+
+# ============================================================
+# ACHIEVEMENTS
+# ============================================================
+
+st.subheader("🏅 Achievements")
+
+
+achievements = []
+
+
+if quizzes_taken >= 1:
+
+    achievements.append(
+        "🎯 First Quiz Completed"
+    )
+
+
+if quizzes_taken >= 5:
+
+    achievements.append(
+        "🔥 Quiz Explorer"
+    )
+
+
+if quizzes_taken >= 10:
+
+    achievements.append(
+        "🏆 Quiz Master"
+    )
+
+
+if flashcards_generated >= 5:
+
+    achievements.append(
+        "🧠 Flashcard Starter"
+    )
+
+
+if flashcards_generated >= 20:
+
+    achievements.append(
+        "📚 Revision Champion"
+    )
+
+
+if accuracy >= 80:
+
+    achievements.append(
+        "🌟 80% Accuracy"
+    )
+
+
+if accuracy >= 90:
+
+    achievements.append(
+        "💎 90% Accuracy"
+    )
+
+
+if not achievements:
+
+    st.write(
+        "🔒 Complete quizzes and create flashcards "
+        "to unlock achievements!"
+    )
+
+else:
+
+    for achievement in achievements:
+
+        st.success(
+            achievement
+        )
+
+
+# ============================================================
+# LEARNING JOURNEY
+# ============================================================
+
+st.subheader("🚀 Your Learning Journey")
+
+
+journey_progress = min(
+    quizzes_taken / 10,
+    1.0
+)
+
+
+st.progress(
+    journey_progress
+)
+
+
+if quizzes_taken < 10:
+
+    remaining = 10 - quizzes_taken
+
+    st.write(
+        f"🔥 **{quizzes_taken}/10 quizzes completed** "
+        f"— only **{remaining} more** to reach your next milestone!"
+    )
+
+else:
+
+    st.success(
+        "🏆 10 quizzes completed! "
+        "You've reached the learning milestone."
+    )
+
+
+# ============================================================
+# STUDY STATUS
+# ============================================================
+
+st.subheader("📖 Study Status")
+
+
+if accuracy >= 80:
+
+    st.success(
+        "🟢 You are performing strongly. "
+        "Keep challenging yourself."
+    )
+
+elif accuracy >= 60:
+
+    st.warning(
+        "🟡 You are progressing well. "
+        "More revision can improve your score."
+    )
+
+elif accuracy > 0:
+
+    st.error(
+        "🔴 More practice is recommended. "
+        "Review flashcards and retry quizzes."
+    )
+
+else:
+
+    st.info(
+        "⚪ No quiz activity yet."
+    )
+
+
+# ============================================================
+# FINAL MOTIVATION
+# ============================================================
+
+if quizzes_taken > 0:
+
+    st.divider()
+
+    st.markdown(
+        "## 🌟 Keep Going!"
+    )
+
+    st.write(
+        "Every quiz you complete and every flashcard you "
+        "review helps strengthen your learning."
+    )
+
+    st.progress(
+        min(accuracy / 100, 1.0)
+    )
+
+    st.caption(
+        "🧠 Learn • Practice • Review • Improve • Master"
+    )
