@@ -1,46 +1,34 @@
 import streamlit as st
+import os
+import json
+
 from database import create_tables, save_quiz, save_flashcards
 
-import os
-import sys
-import json
+from modules.pdf_quiz.pdf_extractor import extract_text_from_pdf
+from modules.pdf_quiz.quiz_generator import generate_quiz
+
+from modules.flashcards.flashcard_generator import generate_flashcards
+
+from modules.document_processing.txt_extractor import extract_text_from_txt
+from modules.document_processing.docx_extractor import extract_text_from_docx
+
+
+# ============================================================
+# INITIALIZE DATABASE
+# ============================================================
+
+create_tables()
 
 
 # ============================================================
 # PATH SETUP
 # ============================================================
 
-create_tables()
-
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-PDF_QUIZ_DIR = os.path.join(
-    BASE_DIR,
-    "modules",
-    "pdf_quiz"
-)
-
-FLASHCARD_DIR = os.path.join(
-    BASE_DIR,
-    "modules",
-    "flashcards"
-)
-
-sys.path.insert(0, PDF_QUIZ_DIR)
-sys.path.insert(0, FLASHCARD_DIR)
-
 
 # ============================================================
-# IMPORT PROJECT MODULES
-# ============================================================
-
-from pdf_extractor import extract_text_from_pdf
-from quiz_generator import generate_quiz
-from flashcard_generator import generate_flashcards
-
-
-# ============================================================
-# STREAMLIT CONFIG
+# STREAMLIT PAGE CONFIGURATION
 # ============================================================
 
 st.set_page_config(
@@ -74,29 +62,29 @@ if "score" not in st.session_state:
 st.title("🧠 Lumyn-AI")
 
 st.subheader(
-    "📄 AI-Powered PDF Quiz & Flashcard Generator"
+    "📚 AI-Powered Document Quiz & Flashcard Generator"
 )
 
 st.write(
-    "Upload a PDF and automatically generate "
-    "interactive quizzes and flashcards using AI."
+    "Upload a PDF, TXT, or DOCX document and automatically "
+    "generate interactive quizzes and flashcards using AI."
 )
 
 st.divider()
 
 
 # ============================================================
-# PDF UPLOAD
+# DOCUMENT UPLOAD
 # ============================================================
 
 uploaded_file = st.file_uploader(
-    "📤 Upload your PDF",
-    type=["pdf"]
+    "📤 Upload your document",
+    type=["pdf", "txt", "docx"]
 )
 
 
 # ============================================================
-# WHEN PDF IS UPLOADED
+# WHEN DOCUMENT IS UPLOADED
 # ============================================================
 
 if uploaded_file is not None:
@@ -106,39 +94,126 @@ if uploaded_file is not None:
     )
 
     # --------------------------------------------------------
-    # Save uploaded PDF
+    # Detect file type
     # --------------------------------------------------------
 
-    temp_pdf_path = os.path.join(
-        BASE_DIR,
-        "uploaded_temp.pdf"
-    )
+    file_name = uploaded_file.name.lower()
 
-    with open(temp_pdf_path, "wb") as file:
-        file.write(uploaded_file.getbuffer())
+    if file_name.endswith(".pdf"):
+        file_type = "PDF"
 
-    # --------------------------------------------------------
-    # Extract PDF text
-    # --------------------------------------------------------
+    elif file_name.endswith(".txt"):
+        file_type = "TXT"
+
+    elif file_name.endswith(".docx"):
+        file_type = "DOCX"
+
+    else:
+        file_type = "UNKNOWN"
 
     st.info(
-        "📖 Extracting text from PDF..."
+        f"📄 File type detected: **{file_type}**"
     )
+
+
+    # ========================================================
+    # SAVE UPLOADED FILE TEMPORARILY
+    # ========================================================
+
+    file_extension = os.path.splitext(
+        uploaded_file.name
+    )[1].lower()
+
+    temp_file_path = os.path.join(
+        BASE_DIR,
+        f"uploaded_temp{file_extension}"
+    )
+
+    with open(temp_file_path, "wb") as file:
+        file.write(uploaded_file.getbuffer())
+
+
+    # ========================================================
+    # EXTRACT TEXT
+    # ========================================================
+
+    st.info(
+        f"📖 Extracting text from {file_type}..."
+    )
+
+    extracted_text = ""
 
     try:
 
-        extracted_text = extract_text_from_pdf(
-            temp_pdf_path
-        )
+        # ----------------------------------------------------
+        # PDF
+        # ----------------------------------------------------
 
-        st.success(
-            "✅ PDF text extracted successfully!"
-        )
+        if file_type == "PDF":
+
+            extracted_text = extract_text_from_pdf(
+                temp_file_path
+            )
+
+            success_message = (
+                "✅ PDF text extracted successfully!"
+            )
+
+
+        # ----------------------------------------------------
+        # TXT
+        # ----------------------------------------------------
+
+        elif file_type == "TXT":
+
+            extracted_text = extract_text_from_txt(
+                temp_file_path
+            )
+
+            success_message = (
+                "✅ TXT text extracted successfully!"
+            )
+
+
+        # ----------------------------------------------------
+        # DOCX
+        # ----------------------------------------------------
+
+        elif file_type == "DOCX":
+
+            extracted_text = extract_text_from_docx(
+                temp_file_path
+            )
+
+            success_message = (
+                "✅ DOCX text extracted successfully!"
+            )
+
+
+        else:
+
+            raise ValueError(
+                "Unsupported document format."
+            )
+
+
+        # ----------------------------------------------------
+        # Check extracted text
+        # ----------------------------------------------------
+
+        if not extracted_text or not extracted_text.strip():
+
+            raise ValueError(
+                "No readable text was found in the document."
+            )
+
+        st.success(success_message)
+
 
     except Exception as error:
 
         st.error(
-            f"❌ PDF extraction failed: {error}"
+            f"❌ {file_type} extraction failed:\n\n{error}"
         )
 
         extracted_text = ""
@@ -151,7 +226,7 @@ if uploaded_file is not None:
     if extracted_text:
 
         with st.expander(
-            "📄 View Extracted PDF Text"
+            f"📄 View Extracted {file_type} Text"
         ):
 
             st.text_area(
@@ -159,6 +234,10 @@ if uploaded_file is not None:
                 extracted_text,
                 height=300
             )
+
+        st.success(
+            "✅ Extracted text is ready to be passed to the AI."
+        )
 
         st.divider()
 
@@ -194,6 +273,7 @@ if uploaded_file is not None:
                     extracted_text,
                     num_questions
                 )
+
 
                 # ------------------------------------------------
                 # Convert JSON string if necessary
@@ -242,9 +322,7 @@ if uploaded_file is not None:
                 # ------------------------------------------------
 
                 st.session_state.quiz = quiz
-
                 st.session_state.submitted = False
-
                 st.session_state.score = 0
 
                 st.success(
@@ -396,7 +474,6 @@ if st.session_state.quiz is not None:
             options.keys()
         )
 
-
         selected = st.radio(
             "Select your answer:",
             option_keys,
@@ -429,9 +506,7 @@ if st.session_state.quiz is not None:
 
                 score += 1
 
-
         st.session_state.score = score
-
         st.session_state.submitted = True
 
 

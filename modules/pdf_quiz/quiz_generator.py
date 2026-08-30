@@ -1,22 +1,22 @@
 import json
-from dotenv import load_dotenv
 
+from dotenv import load_dotenv
 from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
-from pdf_extractor import extract_text_from_pdf
+from modules.pdf_quiz.pdf_extractor import extract_text_from_pdf
 
 
 # ============================================================
-# Load environment variables
+# LOAD ENVIRONMENT VARIABLES
 # ============================================================
 
 load_dotenv()
 
 
 # ============================================================
-# Initialize Groq LLM
+# INITIALIZE GROQ LLM
 # ============================================================
 
 llm = ChatGroq(
@@ -26,16 +26,17 @@ llm = ChatGroq(
 
 
 # ============================================================
-# Quiz Generation Prompt
+# QUIZ GENERATION PROMPT
 # ============================================================
 
 prompt = ChatPromptTemplate.from_template("""
 You are an expert educational quiz generator.
 
-Read the PDF text provided below and create exactly
+Read the document text provided below and create exactly
 {num_questions} multiple-choice questions.
 
 IMPORTANT:
+
 - Questions must be based ONLY on the provided text.
 - Each question must have exactly 4 options.
 - Options must be labelled A, B, C and D.
@@ -60,25 +61,26 @@ Use EXACTLY this JSON format:
     }}
 ]
 
-PDF TEXT:
+DOCUMENT TEXT:
+
 {text}
 """)
 
 
 # ============================================================
-# Create LangChain Chain
+# CREATE LANGCHAIN CHAIN
 # ============================================================
 
 chain = prompt | llm | StrOutputParser()
 
 
 # ============================================================
-# Generate Quiz
+# GENERATE QUIZ
 # ============================================================
 
 def generate_quiz(text, num_questions=5):
     """
-    Generate structured quiz data from extracted PDF text.
+    Generate structured quiz data from document text.
     """
 
     response = chain.invoke({
@@ -107,7 +109,7 @@ def generate_quiz(text, num_questions=5):
 
 
 # ============================================================
-# Main Program
+# MAIN PROGRAM
 # ============================================================
 
 if __name__ == "__main__":
