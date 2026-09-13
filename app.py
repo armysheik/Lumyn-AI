@@ -2,34 +2,39 @@ import streamlit as st
 import os
 import json
 
-from database import create_tables, save_quiz, save_flashcards
+from database import (
+    create_tables,
+    save_quiz,
+    save_flashcards,
+    save_quiz_result,
+    save_flashcard_activity,
+    get_subjects,
+    get_study_history,
+    get_overall_progress,
+    get_subject_progress,
+    get_total_flashcards,
+)
 
 from modules.pdf_quiz.pdf_extractor import extract_text_from_pdf
 from modules.pdf_quiz.quiz_generator import generate_quiz
-
 from modules.flashcards.flashcard_generator import generate_flashcards
-
 from modules.document_processing.txt_extractor import extract_text_from_txt
 from modules.document_processing.docx_extractor import extract_text_from_docx
 
+try:
+    from modules.educational_content.youtube_api import search_educational_videos
+    YOUTUBE_AVAILABLE = True
+except Exception:
+    YOUTUBE_AVAILABLE = False
+
 
 # ============================================================
-# INITIALIZE DATABASE
+# INITIALIZE
 # ============================================================
 
 create_tables()
 
-
-# ============================================================
-# PATH SETUP
-# ============================================================
-
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-
-# ============================================================
-# STREAMLIT PAGE CONFIGURATION
-# ============================================================
 
 st.set_page_config(
     page_title="Lumyn-AI",
@@ -42,33 +47,23 @@ st.set_page_config(
 # SESSION STATE
 # ============================================================
 
-if "quiz" not in st.session_state:
-    st.session_state.quiz = None
+defaults = {
+    "quiz": None,
+    "flashcards": None,
+    "submitted": False,
+    "score": 0,
+    "quiz_subject": "General",
+    "quiz_type": "MCQ",
+    "quiz_difficulty": "Medium",
+    "flashcard_subject": "General",
+    "document_name": None,
+    "extracted_text": "",
+    "youtube_results": [],
+}
 
-if "flashcards" not in st.session_state:
-    st.session_state.flashcards = None
-
-if "submitted" not in st.session_state:
-    st.session_state.submitted = False
-
-if "score" not in st.session_state:
-    st.session_state.score = 0
-
-# ------------------------------------------------------------
-# STUDY PROGRESS
-# ------------------------------------------------------------
-
-if "quizzes_taken" not in st.session_state:
-    st.session_state.quizzes_taken = 0
-
-if "total_questions" not in st.session_state:
-    st.session_state.total_questions = 0
-
-if "correct_answers" not in st.session_state:
-    st.session_state.correct_answers = 0
-
-if "flashcards_generated" not in st.session_state:
-    st.session_state.flashcards_generated = 0
+for key, value in defaults.items():
+    if key not in st.session_state:
+        st.session_state[key] = value
 
 
 # ============================================================
@@ -90,17 +85,203 @@ st.divider()
 
 
 # ============================================================
+# MEMBER 1 - YOUTUBE EDUCATIONAL CONTENT
+# ============================================================
+
+st.header("📺 Educational Content")
+
+st.write(
+    "Search YouTube for educational videos related to "
+    "the topic you are studying."
+)
+
+if not YOUTUBE_AVAILABLE:
+
+    st.warning(
+        "YouTube educational content module is not available. "
+        "Check that "
+        "modules/educational_content/youtube_api.py exists."
+    )
+
+else:
+
+    youtube_topic = st.text_input(
+        "🔎 Search educational videos",
+        placeholder=(
+            "Example: Python programming, "
+            "Machine Learning, Flutter"
+        ),
+        key="youtube_topic",
+    )
+
+    youtube_count = st.slider(
+        "Number of videos",
+        min_value=1,
+        max_value=10,
+        value=6,
+        key="youtube_count",
+    )
+
+    if st.button(
+        "🔍 Search Educational Videos",
+        use_container_width=True,
+    ):
+
+        if not youtube_topic.strip():
+
+            st.warning(
+                "Please enter a topic first."
+            )
+
+        else:
+
+            try:
+
+                with st.spinner(
+                    "Searching YouTube educational videos..."
+                ):
+
+                    results = search_educational_videos(
+                        youtube_topic.strip(),
+                        youtube_count,
+                    )
+
+                st.session_state.youtube_results = results
+
+                if results:
+
+                    st.success(
+                        f"Found {len(results)} educational "
+                        f"video(s) for "
+                        f"'{youtube_topic.strip()}'."
+                    )
+
+                else:
+
+                    st.info(
+                        "No educational videos were found "
+                        "for this topic."
+                    )
+
+            except Exception as error:
+
+                st.error(
+                    f"❌ YouTube search failed:\n\n{error}"
+                )
+
+    # --------------------------------------------------------
+    # DISPLAY YOUTUBE RESULTS
+    # --------------------------------------------------------
+
+    if st.session_state.youtube_results:
+
+        st.subheader(
+            "🎓 Recommended Educational Videos"
+        )
+
+        for video in st.session_state.youtube_results:
+
+            with st.container(border=True):
+
+                col1, col2 = st.columns([1, 2])
+
+                # ------------------------------------------------
+                # THUMBNAIL
+                # ------------------------------------------------
+
+                with col1:
+
+                    if video.get("thumbnail_url"):
+
+                        st.image(
+                            video["thumbnail_url"],
+                            use_container_width=True,
+                        )
+
+                # ------------------------------------------------
+                # VIDEO DETAILS
+                # ------------------------------------------------
+
+                with col2:
+
+                    st.markdown(
+                        f"### {video.get('title', 'Untitled')}"
+                    )
+
+                    st.write(
+                        f"**Channel:** "
+                        f"{video.get('channel_title', 'Unknown')}"
+                    )
+
+                    description = video.get(
+                        "description",
+                        "",
+                    )
+
+                    if description:
+
+                        st.write(
+                            description[:400]
+                        )
+
+                    video_url = video.get(
+                        "url",
+                        "",
+                    )
+
+                    if video_url:
+
+                        st.markdown(
+                            f"[▶ Watch on YouTube]"
+                            f"({video_url})"
+                        )
+
+
+st.divider()
+
+
+# ============================================================
+# GET SUBJECTS FROM DATABASE
+# ============================================================
+
+try:
+
+    subjects = get_subjects()
+
+except Exception:
+
+    subjects = ["General"]
+
+
+if not subjects:
+
+    subjects = ["General"]
+
+
+if "General" not in subjects:
+
+    subjects.insert(0, "General")
+
+
+# ============================================================
 # DOCUMENT UPLOAD
 # ============================================================
 
+st.header("📤 Upload Your Study Material")
+
 uploaded_file = st.file_uploader(
-    "📤 Upload your document",
-    type=["pdf", "txt", "docx"]
+    "Upload your document",
+    type=[
+        "pdf",
+        "txt",
+        "docx",
+    ],
+    help="Supported formats: PDF, TXT and DOCX",
 )
 
 
 # ============================================================
-# WHEN DOCUMENT IS UPLOADED
+# PROCESS UPLOADED DOCUMENT
 # ============================================================
 
 if uploaded_file is not None:
@@ -109,32 +290,35 @@ if uploaded_file is not None:
         f"✅ Uploaded: {uploaded_file.name}"
     )
 
-    # --------------------------------------------------------
-    # Detect file type
-    # --------------------------------------------------------
-
     file_name = uploaded_file.name.lower()
 
+    # --------------------------------------------------------
+    # DETECT FILE TYPE
+    # --------------------------------------------------------
+
     if file_name.endswith(".pdf"):
+
         file_type = "PDF"
 
     elif file_name.endswith(".txt"):
+
         file_type = "TXT"
 
     elif file_name.endswith(".docx"):
+
         file_type = "DOCX"
 
     else:
+
         file_type = "UNKNOWN"
 
     st.info(
         f"📄 File type detected: **{file_type}**"
     )
 
-
-    # ========================================================
-    # SAVE UPLOADED FILE TEMPORARILY
-    # ========================================================
+    # --------------------------------------------------------
+    # TEMPORARY FILE
+    # --------------------------------------------------------
 
     file_extension = os.path.splitext(
         uploaded_file.name
@@ -142,415 +326,474 @@ if uploaded_file is not None:
 
     temp_file_path = os.path.join(
         BASE_DIR,
-        f"uploaded_temp{file_extension}"
+        f"uploaded_temp{file_extension}",
     )
-
-    with open(temp_file_path, "wb") as file:
-        file.write(uploaded_file.getbuffer())
-
-
-    # ========================================================
-    # EXTRACT TEXT
-    # ========================================================
-
-    st.info(
-        f"📖 Extracting text from {file_type}..."
-    )
-
-    extracted_text = ""
 
     try:
 
-        # ----------------------------------------------------
-        # PDF
-        # ----------------------------------------------------
+        with open(
+            temp_file_path,
+            "wb",
+        ) as file:
 
-        if file_type == "PDF":
-
-            extracted_text = extract_text_from_pdf(
-                temp_file_path
+            file.write(
+                uploaded_file.getbuffer()
             )
-
-            success_message = (
-                "✅ PDF text extracted successfully!"
-            )
-
-
-        # ----------------------------------------------------
-        # TXT
-        # ----------------------------------------------------
-
-        elif file_type == "TXT":
-
-            extracted_text = extract_text_from_txt(
-                temp_file_path
-            )
-
-            success_message = (
-                "✅ TXT text extracted successfully!"
-            )
-
-
-        # ----------------------------------------------------
-        # DOCX
-        # ----------------------------------------------------
-
-        elif file_type == "DOCX":
-
-            extracted_text = extract_text_from_docx(
-                temp_file_path
-            )
-
-            success_message = (
-                "✅ DOCX text extracted successfully!"
-            )
-
-
-        else:
-
-            raise ValueError(
-                "Unsupported document format."
-            )
-
-
-        # ----------------------------------------------------
-        # Check extracted text
-        # ----------------------------------------------------
-
-        if not extracted_text or not extracted_text.strip():
-
-            raise ValueError(
-                "No readable text was found in the document."
-            )
-
-        st.success(success_message)
-
-
-    except Exception as error:
-
-        st.error(
-            f"❌ {file_type} extraction failed:\n\n{error}"
-        )
 
         extracted_text = ""
 
+        # ----------------------------------------------------
+        # EXTRACT TEXT
+        # ----------------------------------------------------
 
-    # ========================================================
-    # SHOW EXTRACTED TEXT
-    # ========================================================
+        with st.spinner(
+            f"📖 Extracting text from {file_type}..."
+        ):
 
-    if extracted_text:
+            if file_type == "PDF":
+
+                extracted_text = extract_text_from_pdf(
+                    temp_file_path
+                )
+
+            elif file_type == "TXT":
+
+                extracted_text = extract_text_from_txt(
+                    temp_file_path
+                )
+
+            elif file_type == "DOCX":
+
+                extracted_text = extract_text_from_docx(
+                    temp_file_path
+                )
+
+            else:
+
+                raise ValueError(
+                    "Unsupported document format."
+                )
+
+        # ----------------------------------------------------
+        # CHECK TEXT
+        # ----------------------------------------------------
+
+        if (
+            not extracted_text
+            or not extracted_text.strip()
+        ):
+
+            raise ValueError(
+                "No readable text was found in "
+                "the document."
+            )
+
+        st.session_state.extracted_text = (
+            extracted_text
+        )
+
+        st.session_state.document_name = (
+            uploaded_file.name
+        )
+
+        st.success(
+            f"✅ {file_type} text extracted successfully!"
+        )
+
+        # ----------------------------------------------------
+        # VIEW TEXT
+        # ----------------------------------------------------
 
         with st.expander(
-            f"📄 View Extracted {file_type} Text"
+            "📄 View Extracted Text"
         ):
 
             st.text_area(
                 "Extracted Text",
                 extracted_text,
-                height=300
+                height=300,
+                key="extracted_text_view",
             )
 
-        st.success(
-            "✅ Extracted text is ready to be passed to the AI."
+    except Exception as error:
+
+        st.session_state.extracted_text = ""
+
+        st.error(
+            f"❌ {file_type} extraction failed:\n\n"
+            f"{error}"
         )
 
-        st.divider()
+
+# ============================================================
+# GET EXTRACTED TEXT
+# ============================================================
+
+extracted_text = st.session_state.extracted_text
 
 
-        # ====================================================
-        # QUIZ SECTION
-        # ====================================================
+# ============================================================
+# GENERATORS
+# ============================================================
 
-        st.header("📝 Quiz Generator")
+if extracted_text:
+
+    st.divider()
+
+    # ========================================================
+    # STUDY ORGANIZATION
+    # ========================================================
+
+    st.header("📚 Study Organization")
+
+    subject_option = st.selectbox(
+        "📖 Select Subject",
+        subjects,
+        key="subject_select",
+    )
+
+    custom_subject = st.text_input(
+        "Or enter a new subject",
+        placeholder=(
+            "Example: Python, Java, DBMS, "
+            "Machine Learning"
+        ),
+    )
+
+    if custom_subject.strip():
+
+        selected_subject = (
+            custom_subject.strip()
+        )
+
+    else:
+
+        selected_subject = subject_option
+
+    st.info(
+        f"Current study subject: "
+        f"**{selected_subject}**"
+    )
+
+    st.divider()
 
 
-        # ----------------------------------------------------
-        # NUMBER OF QUESTIONS
-        # ----------------------------------------------------
+    # ========================================================
+    # QUIZ GENERATOR
+    # ========================================================
+
+    st.header("📝 Quiz Generator")
+
+    col1, col2, col3 = st.columns(3)
+
+    # --------------------------------------------------------
+    # NUMBER OF QUESTIONS
+    # --------------------------------------------------------
+
+    with col1:
 
         num_questions = st.slider(
             "📝 Number of questions",
             min_value=1,
             max_value=10,
-            value=3
+            value=3,
         )
 
+    # --------------------------------------------------------
+    # DIFFICULTY
+    # --------------------------------------------------------
 
-        # ----------------------------------------------------
-        # DIFFICULTY LEVEL
-        # ----------------------------------------------------
+    with col2:
 
         difficulty = st.selectbox(
             "🎯 Select Difficulty",
             [
                 "Easy",
                 "Medium",
-                "Hard"
-            ]
+                "Hard",
+            ],
+            index=1,
         )
 
+    # --------------------------------------------------------
+    # QUIZ TYPE
+    # --------------------------------------------------------
 
-        # ----------------------------------------------------
-        # QUIZ TYPE
-        # ----------------------------------------------------
+    with col3:
 
         quiz_type = st.selectbox(
             "📝 Select Quiz Type",
             [
-                "MCQ"
-            ]
+                "MCQ",
+                "True-False",
+                "Fill-in-the-Blanks",
+            ],
         )
 
-
-        # ----------------------------------------------------
-        # SHOW CURRENT SELECTION
-        # ----------------------------------------------------
-
-        st.info(
-            f"Selected: **{difficulty}** difficulty | "
-            f"**{quiz_type}** format | "
-            f"**{num_questions}** questions"
-        )
+    st.info(
+        f"Selected: **{difficulty}** difficulty | "
+        f"**{quiz_type}** format | "
+        f"**{num_questions}** questions | "
+        f"**{selected_subject}** subject"
+    )
 
 
-        # ----------------------------------------------------
-        # GENERATE QUIZ BUTTON
-        # ----------------------------------------------------
+    # ========================================================
+    # GENERATE QUIZ BUTTON
+    # ========================================================
 
-        generate_button = st.button(
-            "🚀 Generate Quiz",
-            use_container_width=True
-        )
+    if st.button(
+        "🚀 Generate Quiz",
+        use_container_width=True,
+        key="generate_quiz_button",
+    ):
 
+        try:
 
-        # ====================================================
-        # GENERATE QUIZ
-        # ====================================================
-
-        if generate_button:
-
-            st.info(
-                f"🤖 AI is generating a "
+            with st.spinner(
+                f"🤖 Generating "
                 f"{difficulty} {quiz_type} quiz..."
-            )
-
-            try:
-
-                # ------------------------------------------------
-                # Generate quiz
-                # ------------------------------------------------
+            ):
 
                 quiz = generate_quiz(
                     extracted_text,
                     num_questions,
-                    difficulty
+                    difficulty,
+                    quiz_type,
                 )
 
+            # ------------------------------------------------
+            # CONVERT JSON STRING
+            # ------------------------------------------------
 
-                # ------------------------------------------------
-                # Convert JSON string if necessary
-                # ------------------------------------------------
+            if isinstance(
+                quiz,
+                str,
+            ):
 
-                if isinstance(quiz, str):
+                quiz = quiz.strip()
 
-                    quiz = quiz.strip()
-
-                    quiz = quiz.replace(
-                        "```json",
-                        ""
-                    )
-
-                    quiz = quiz.replace(
-                        "```",
-                        ""
-                    )
-
-                    quiz = quiz.strip()
-
-                    quiz = json.loads(quiz)
-
-
-                # ------------------------------------------------
-                # Validate quiz
-                # ------------------------------------------------
-
-                if not isinstance(quiz, list):
-
-                    raise ValueError(
-                        "Quiz format is invalid. "
-                        "Expected a list of questions."
-                    )
-
-
-                if len(quiz) == 0:
-
-                    raise ValueError(
-                        "AI returned an empty quiz."
-                    )
-
-
-                # ------------------------------------------------
-                # Save quiz to database
-                # ------------------------------------------------
-
-                save_quiz(quiz)
-
-
-                # ------------------------------------------------
-                # Store quiz in session
-                # ------------------------------------------------
-
-                st.session_state.quiz = quiz
-
-                st.session_state.submitted = False
-
-                st.session_state.score = 0
-
-
-                st.success(
-                    f"🎉 {difficulty} quiz generated successfully!"
+                quiz = quiz.replace(
+                    "```json",
+                    "",
                 )
 
-
-            except Exception as error:
-
-                st.error(
-                    f"❌ Quiz generation failed:\n\n{error}"
+                quiz = quiz.replace(
+                    "```",
+                    "",
                 )
 
+                quiz = json.loads(
+                    quiz.strip()
+                )
 
-        # ====================================================
-        # FLASHCARD SECTION
-        # ====================================================
+            # ------------------------------------------------
+            # VALIDATE
+            # ------------------------------------------------
 
-        st.divider()
+            if (
+                not isinstance(
+                    quiz,
+                    list,
+                )
+                or len(quiz) == 0
+            ):
 
-        st.header("🧠 Flashcard Generator")
+                raise ValueError(
+                    "AI returned an invalid "
+                    "or empty quiz."
+                )
 
+            # ------------------------------------------------
+            # SAVE QUIZ
+            # ------------------------------------------------
 
-        # ----------------------------------------------------
-        # NUMBER OF FLASHCARDS
-        # ----------------------------------------------------
-
-        num_flashcards = st.slider(
-            "🧠 Number of flashcards",
-            min_value=1,
-            max_value=10,
-            value=5
-        )
-
-
-        # ----------------------------------------------------
-        # FLASHCARD BUTTON
-        # ----------------------------------------------------
-
-        flashcard_button = st.button(
-            "🧠 Generate Flashcards",
-            use_container_width=True
-        )
-
-
-        # ====================================================
-        # GENERATE FLASHCARDS
-        # ====================================================
-
-        if flashcard_button:
-
-            st.info(
-                "🤖 AI is generating your flashcards..."
+            save_quiz(
+                quiz,
+                subject=selected_subject,
+                quiz_type=quiz_type,
+                difficulty=difficulty,
             )
 
-            try:
+            # ------------------------------------------------
+            # SESSION
+            # ------------------------------------------------
+
+            st.session_state.quiz = quiz
+
+            st.session_state.submitted = False
+
+            st.session_state.score = 0
+
+            st.session_state.quiz_subject = (
+                selected_subject
+            )
+
+            st.session_state.quiz_type = (
+                quiz_type
+            )
+
+            st.session_state.quiz_difficulty = (
+                difficulty
+            )
+
+            st.success(
+                f"🎉 {difficulty} {quiz_type} "
+                f"quiz generated successfully!"
+            )
+
+        except Exception as error:
+
+            st.error(
+                f"❌ Quiz generation failed:\n\n"
+                f"{error}"
+            )
+
+
+    # ========================================================
+    # FLASHCARD GENERATOR
+    # ========================================================
+
+    st.divider()
+
+    st.header("🧠 Flashcard Generator")
+
+    flashcard_subject = st.text_input(
+        "📚 Flashcard Subject",
+        value=selected_subject,
+        key="flashcard_subject_input",
+    )
+
+    if flashcard_subject.strip():
+
+        flashcard_subject = (
+            flashcard_subject.strip()
+        )
+
+    else:
+
+        flashcard_subject = "General"
+
+
+    num_flashcards = st.slider(
+        "🧠 Number of flashcards",
+        min_value=1,
+        max_value=20,
+        value=5,
+    )
+
+
+    # ========================================================
+    # GENERATE FLASHCARDS
+    # ========================================================
+
+    if st.button(
+        "🧠 Generate Flashcards",
+        use_container_width=True,
+        key="generate_flashcards_button",
+    ):
+
+        try:
+
+            with st.spinner(
+                "🤖 AI is generating "
+                "your flashcards..."
+            ):
 
                 flashcards = generate_flashcards(
                     extracted_text,
-                    num_flashcards
+                    num_flashcards,
                 )
 
+            # ------------------------------------------------
+            # CONVERT JSON STRING
+            # ------------------------------------------------
 
-                # ------------------------------------------------
-                # Convert JSON string if necessary
-                # ------------------------------------------------
+            if isinstance(
+                flashcards,
+                str,
+            ):
 
-                if isinstance(flashcards, str):
+                flashcards = flashcards.strip()
 
-                    flashcards = flashcards.strip()
+                flashcards = flashcards.replace(
+                    "```json",
+                    "",
+                )
 
-                    flashcards = flashcards.replace(
-                        "```json",
-                        ""
-                    )
+                flashcards = flashcards.replace(
+                    "```",
+                    "",
+                )
 
-                    flashcards = flashcards.replace(
-                        "```",
-                        ""
-                    )
+                flashcards = json.loads(
+                    flashcards.strip()
+                )
 
-                    flashcards = flashcards.strip()
+            # ------------------------------------------------
+            # VALIDATE
+            # ------------------------------------------------
 
-                    flashcards = json.loads(
-                        flashcards
-                    )
-
-
-                # ------------------------------------------------
-                # Validate flashcards
-                # ------------------------------------------------
-
-                if not isinstance(
+            if (
+                not isinstance(
                     flashcards,
-                    list
-                ):
+                    list,
+                )
+                or len(flashcards) == 0
+            ):
 
-                    raise ValueError(
-                        "Flashcard format is invalid. "
-                        "Expected a list of flashcards."
-                    )
-
-
-                if len(flashcards) == 0:
-
-                    raise ValueError(
-                        "AI returned empty flashcards."
-                    )
-
-
-                # ------------------------------------------------
-                # Save flashcards to SQLite
-                # ------------------------------------------------
-
-                save_flashcards(
-                    flashcards
+                raise ValueError(
+                    "AI returned invalid "
+                    "or empty flashcards."
                 )
 
+            # ------------------------------------------------
+            # SAVE FLASHCARDS
+            # ------------------------------------------------
 
-                # ------------------------------------------------
-                # Store flashcards in session
-                # ------------------------------------------------
+            save_flashcards(
+                flashcards,
+                subject=flashcard_subject,
+            )
 
-                st.session_state.flashcards = flashcards
+            # ------------------------------------------------
+            # SAVE ACTIVITY
+            # ------------------------------------------------
 
+            try:
 
-                # ------------------------------------------------
-                # Update flashcard statistics
-                # ------------------------------------------------
-
-                st.session_state.flashcards_generated += len(
-                    flashcards
+                save_flashcard_activity(
+                    flashcard_subject,
+                    len(flashcards),
                 )
 
+            except Exception:
 
-                st.success(
-                    "🎉 Flashcards generated successfully!"
-                )
+                pass
 
+            # ------------------------------------------------
+            # SESSION
+            # ------------------------------------------------
 
-            except Exception as error:
+            st.session_state.flashcards = (
+                flashcards
+            )
 
-                st.error(
-                    f"❌ Flashcard generation failed:\n\n{error}"
-                )
+            st.session_state.flashcard_subject = (
+                flashcard_subject
+            )
+
+            st.success(
+                f"🎉 {len(flashcards)} flashcards "
+                f"generated successfully!"
+            )
+
+        except Exception as error:
+
+            st.error(
+                f"❌ Flashcard generation failed:\n\n"
+                f"{error}"
+            )
 
 
 # ============================================================
@@ -567,29 +810,27 @@ if st.session_state.quiz is not None:
 
     answers = {}
 
-
-    # ========================================================
+    # --------------------------------------------------------
     # QUESTIONS
-    # ========================================================
+    # --------------------------------------------------------
 
-    for i, question_data in enumerate(quiz):
+    for i, question_data in enumerate(
+        quiz
+    ):
 
         st.markdown(
             f"### Question {i + 1}"
         )
 
-
-        # ----------------------------------------------------
-        # Display question
-        # ----------------------------------------------------
-
         st.write(
-            question_data["question"]
+            question_data.get(
+                "question",
+                "",
+            )
         )
 
-
         # ----------------------------------------------------
-        # Display difficulty
+        # DIFFICULTY
         # ----------------------------------------------------
 
         if "difficulty" in question_data:
@@ -599,75 +840,160 @@ if st.session_state.quiz is not None:
                 f"{question_data['difficulty']}"
             )
 
+        # ----------------------------------------------------
+        # MCQ / TRUE-FALSE
+        # ----------------------------------------------------
+
+        if "options" in question_data:
+
+            options = question_data[
+                "options"
+            ]
+
+            if isinstance(
+                options,
+                dict,
+            ):
+
+                option_keys = list(
+                    options.keys()
+                )
+
+                selected = st.radio(
+                    "Select your answer:",
+                    option_keys,
+                    format_func=lambda key: (
+                        f"{key}. "
+                        f"{options[key]}"
+                    ),
+                    key=f"answer_{i}",
+                )
+
+                answers[i] = selected
 
         # ----------------------------------------------------
-        # Display options
+        # FILL IN THE BLANK
         # ----------------------------------------------------
 
-        options = question_data["options"]
+        else:
 
-        option_keys = list(
-            options.keys()
-        )
-
-
-        selected = st.radio(
-            "Select your answer:",
-            option_keys,
-
-            format_func=lambda key:
-                f"{key}. {options[key]}",
-
-            key=f"answer_{i}"
-        )
-
-
-        answers[i] = selected
-
+            answers[i] = st.text_input(
+                "✏️ Your answer:",
+                key=f"answer_{i}",
+            )
 
         st.divider()
 
 
     # ========================================================
-    # SUBMIT BUTTON
+    # SUBMIT QUIZ
     # ========================================================
 
     if st.button(
         "✅ Submit Quiz",
-        use_container_width=True
+        use_container_width=True,
+        key="submit_quiz_button",
     ):
 
         score = 0
 
+        for i, question_data in enumerate(
+            quiz
+        ):
 
-        for i, question_data in enumerate(quiz):
+            correct_answer = str(
+                question_data.get(
+                    "answer",
+                    "",
+                )
+            ).strip()
 
-            correct_answer = question_data["answer"]
+            user_answer = str(
+                answers.get(
+                    i,
+                    "",
+                )
+            ).strip()
 
+            # ------------------------------------------------
+            # DIRECT ANSWER CHECK
+            # ------------------------------------------------
 
-            if answers[i] == correct_answer:
+            if (
+                user_answer.lower()
+                == correct_answer.lower()
+            ):
 
                 score += 1
 
+            # ------------------------------------------------
+            # ACCEPTED ANSWERS
+            # ------------------------------------------------
+
+            elif (
+                "accepted_answers"
+                in question_data
+            ):
+
+                accepted_answers = (
+                    question_data.get(
+                        "accepted_answers",
+                        [],
+                    )
+                )
+
+                accepted_answers = [
+                    str(answer)
+                    .strip()
+                    .lower()
+                    for answer
+                    in accepted_answers
+                ]
+
+                if (
+                    user_answer.lower()
+                    in accepted_answers
+                ):
+
+                    score += 1
 
         # ----------------------------------------------------
-        # Save current result
+        # SAVE SESSION RESULT
         # ----------------------------------------------------
 
         st.session_state.score = score
 
         st.session_state.submitted = True
 
-
         # ----------------------------------------------------
-        # Update study statistics
+        # SAVE RESULT TO SQLITE
         # ----------------------------------------------------
 
-        st.session_state.quizzes_taken += 1
+        try:
 
-        st.session_state.total_questions += len(quiz)
+            save_quiz_result(
+                subject=(
+                    st.session_state.quiz_subject
+                ),
+                quiz_type=(
+                    st.session_state.quiz_type
+                ),
+                difficulty=(
+                    st.session_state.quiz_difficulty
+                ),
+                score=score,
+                total_questions=len(quiz),
+            )
 
-        st.session_state.correct_answers += score
+        except Exception as error:
+
+            st.warning(
+                "Quiz completed, but result "
+                "could not be saved: "
+                f"{error}"
+            )
+
+        st.rerun()
 
 
 # ============================================================
@@ -685,20 +1011,21 @@ if (
 
     total = len(quiz)
 
+    if total > 0:
 
-    percentage = (
-        score / total
-    ) * 100
+        percentage = (
+            score / total
+        ) * 100
+
+    else:
+
+        percentage = 0
 
 
     st.divider()
 
     st.header("🎯 Quiz Result")
 
-
-    # --------------------------------------------------------
-    # Score
-    # --------------------------------------------------------
 
     col1, col2, col3 = st.columns(3)
 
@@ -707,7 +1034,7 @@ if (
 
         st.metric(
             "🏆 Score",
-            f"{score} / {total}"
+            f"{score} / {total}",
         )
 
 
@@ -715,30 +1042,25 @@ if (
 
         st.metric(
             "📊 Accuracy",
-            f"{percentage:.1f}%"
+            f"{percentage:.1f}%",
         )
 
 
     with col3:
 
         st.metric(
-            "🎯 Difficulty",
-            quiz[0].get("difficulty", "Medium")
+            "📚 Subject",
+            st.session_state.quiz_subject,
         )
 
 
-    # --------------------------------------------------------
-    # Progress
-    # --------------------------------------------------------
-
     st.progress(
-        percentage / 100
+        min(
+            percentage / 100,
+            1.0,
+        )
     )
 
-
-    # ========================================================
-    # PERFORMANCE
-    # ========================================================
 
     if percentage >= 80:
 
@@ -746,13 +1068,11 @@ if (
             "🏆 Excellent! Great job!"
         )
 
-
     elif percentage >= 50:
 
         st.warning(
             "👍 Good attempt! Keep practicing."
         )
-
 
     else:
 
@@ -770,9 +1090,14 @@ if (
     )
 
 
-    for i, question_data in enumerate(quiz):
+    for i, question_data in enumerate(
+        quiz
+    ):
 
-        correct = question_data["answer"]
+        correct = question_data.get(
+            "answer",
+            "",
+        )
 
         st.write(
             f"**Question {i + 1}:** "
@@ -790,185 +1115,120 @@ if st.session_state.flashcards is not None:
 
     st.header("🧠 Your Flashcards")
 
-    flashcards = st.session_state.flashcards
+    flashcards = (
+        st.session_state.flashcards
+    )
+
+    st.caption(
+        f"Subject: "
+        f"{st.session_state.flashcard_subject}"
+    )
 
 
     for i, card in enumerate(
         flashcards,
-        start=1
+        start=1,
     ):
 
-        st.markdown(
-            f"### 🗂️ Flashcard {i}"
-        )
-
-
-        st.write(
-            f"**Question:** "
-            f"{card['question']}"
-        )
-
-
-        with st.expander(
-            "👀 Show Answer"
+        with st.container(
+            border=True
         ):
 
-            st.write(
-                card["answer"]
+            st.markdown(
+                f"### 🗂️ Flashcard {i}"
             )
 
+            st.write(
+                f"**Question:** "
+                f"{card.get('question', '')}"
+            )
 
-        st.divider()
+            with st.expander(
+                "👀 Show Answer"
+            ):
+
+                st.write(
+                    card.get(
+                        "answer",
+                        "",
+                    )
+                )
 
 
 # ============================================================
-# ADVANCED STUDY PROGRESS DASHBOARD
+# MEMBER 1 - PERSISTENT STUDY DASHBOARD
 # ============================================================
 
 st.divider()
 
-st.header("📊 Your Learning Dashboard")
+st.header(
+    "📊 Your Learning Dashboard"
+)
 
 st.write(
-    "Track your learning performance and get personalized "
-    "insights based on your quiz and flashcard activity."
+    "Your study activity is stored in SQLite "
+    "so your quiz scores, subjects, and progress "
+    "can be viewed again."
 )
 
 
 # ============================================================
-# GET PROGRESS DATA
+# OVERALL PROGRESS
 # ============================================================
 
-quizzes_taken = st.session_state.quizzes_taken
+try:
 
-total_questions = st.session_state.total_questions
+    overall = get_overall_progress()
 
-correct_answers = st.session_state.correct_answers
+except Exception:
 
-flashcards_generated = st.session_state.flashcards_generated
-
-
-# ============================================================
-# CALCULATE ACCURACY
-# ============================================================
-
-if total_questions > 0:
-
-    accuracy = (
-        correct_answers / total_questions
-    ) * 100
-
-else:
-
-    accuracy = 0
+    overall = {
+        "quizzes_taken": 0,
+        "total_questions": 0,
+        "correct_answers": 0,
+        "accuracy": 0,
+    }
 
 
 # ============================================================
-# LEARNING LEVEL
+# TOTAL FLASHCARDS
 # ============================================================
 
-if accuracy >= 90:
+try:
 
-    learning_level = "🏆 Master Learner"
-
-elif accuracy >= 80:
-
-    learning_level = "🌟 Advanced Learner"
-
-elif accuracy >= 60:
-
-    learning_level = "📚 Active Learner"
-
-elif accuracy > 0:
-
-    learning_level = "🌱 Beginner Learner"
-
-else:
-
-    learning_level = "🚀 Start Learning"
-
-
-# ============================================================
-# LEARNING OVERVIEW
-# ============================================================
-
-st.subheader("🎯 Learning Overview")
-
-
-col1, col2, col3 = st.columns(3)
-
-
-with col1:
-
-    st.metric(
-        "🏆 Learning Level",
-        learning_level
+    total_flashcards = (
+        get_total_flashcards()
     )
 
+except Exception:
 
-with col2:
-
-    st.metric(
-        "📈 Accuracy",
-        f"{accuracy:.1f}%"
-    )
+    total_flashcards = 0
 
 
-with col3:
+quizzes_taken = overall.get(
+    "quizzes_taken",
+    0,
+)
 
-    st.metric(
-        "🎯 Questions Mastered",
-        f"{correct_answers}/{total_questions}"
-    )
+total_questions = overall.get(
+    "total_questions",
+    0,
+)
 
+correct_answers = overall.get(
+    "correct_answers",
+    0,
+)
 
-# ============================================================
-# KNOWLEDGE MASTERY
-# ============================================================
-
-st.subheader("🧠 Overall Knowledge Mastery")
-
-
-st.progress(
-    min(accuracy / 100, 1.0)
+accuracy = overall.get(
+    "accuracy",
+    0,
 )
 
 
-if accuracy >= 80:
-
-    st.success(
-        f"🌟 Excellent! You have mastered "
-        f"{accuracy:.1f}% of the questions you've attempted."
-    )
-
-elif accuracy >= 60:
-
-    st.info(
-        f"📚 Good progress! Your current mastery "
-        f"is {accuracy:.1f}%. Keep practicing to reach 80%+."
-    )
-
-elif accuracy > 0:
-
-    st.warning(
-        f"🌱 You are building your knowledge. "
-        f"Your current mastery is {accuracy:.1f}%."
-    )
-
-else:
-
-    st.info(
-        "🚀 Generate your first quiz to begin "
-        "tracking your learning journey."
-    )
-
-
 # ============================================================
-# LEARNING ACTIVITY
+# LEARNING METRICS
 # ============================================================
-
-st.subheader("📚 Learning Activity")
-
 
 col1, col2, col3, col4 = st.columns(4)
 
@@ -977,7 +1237,7 @@ with col1:
 
     st.metric(
         "📝 Quizzes Taken",
-        quizzes_taken
+        quizzes_taken,
     )
 
 
@@ -985,7 +1245,7 @@ with col2:
 
     st.metric(
         "❓ Questions",
-        total_questions
+        total_questions,
     )
 
 
@@ -993,7 +1253,7 @@ with col3:
 
     st.metric(
         "✅ Correct",
-        correct_answers
+        correct_answers,
     )
 
 
@@ -1001,111 +1261,223 @@ with col4:
 
     st.metric(
         "🧠 Flashcards",
-        flashcards_generated
+        total_flashcards,
     )
 
 
 # ============================================================
-# PERFORMANCE BREAKDOWN
+# OVERALL MASTERY
 # ============================================================
 
-st.subheader("📊 Performance Breakdown")
+st.subheader(
+    "🧠 Overall Knowledge Mastery"
+)
+
+st.progress(
+    min(
+        float(accuracy) / 100,
+        1.0,
+    )
+)
+
+st.write(
+    f"Current overall accuracy: "
+    f"**{float(accuracy):.1f}%**"
+)
 
 
-if total_questions > 0:
+# ============================================================
+# SUBJECT-WISE PROGRESS
+# ============================================================
 
-    wrong_answers = (
-        total_questions - correct_answers
+st.subheader(
+    "📚 Subject-wise Progress"
+)
+
+
+try:
+
+    subject_progress = (
+        get_subject_progress()
     )
 
-    col1, col2 = st.columns(2)
+except Exception:
+
+    subject_progress = []
 
 
-    with col1:
+if subject_progress:
 
-        st.write("### ✅ Correct Answers")
+    for item in subject_progress:
 
-        st.progress(
-            correct_answers / total_questions
+        subject = item.get(
+            "subject",
+            "General",
+        )
+
+        subject_accuracy = float(
+            item.get(
+                "accuracy",
+                0,
+            )
         )
 
         st.write(
-            f"{correct_answers} correct out of "
-            f"{total_questions} questions"
+            f"**{subject}** — "
+            f"{subject_accuracy:.1f}% accuracy"
         )
-
-
-    with col2:
-
-        st.write("### ❌ Questions to Review")
 
         st.progress(
-            wrong_answers / total_questions
-        )
-
-        st.write(
-            f"{wrong_answers} questions need more practice"
+            min(
+                subject_accuracy / 100,
+                1.0,
+            )
         )
 
 else:
 
     st.info(
-        "Complete a quiz to see your performance breakdown."
+        "Complete a quiz to see "
+        "subject-wise progress."
     )
 
 
 # ============================================================
-# SMART AI STUDY RECOMMENDATION
+# STUDY HISTORY
 # ============================================================
 
-st.subheader("💡 Smart Study Recommendation")
+st.subheader(
+    "🕒 Study History"
+)
+
+
+try:
+
+    history = get_study_history(
+        limit=20
+    )
+
+except Exception:
+
+    history = []
+
+
+if history:
+
+    for item in history:
+
+        subject = item.get(
+            "subject",
+            "General",
+        )
+
+        activity_type = item.get(
+            "activity_type",
+            "Study",
+        )
+
+        score = item.get(
+            "score",
+            None,
+        )
+
+        total = item.get(
+            "total_questions",
+            None,
+        )
+
+        created_at = item.get(
+            "created_at",
+            "",
+        )
+
+
+        if (
+            score is not None
+            and total is not None
+        ):
+
+            st.write(
+                f"📘 **{subject}** | "
+                f"{activity_type} | "
+                f"Score: {score}/{total} | "
+                f"{created_at}"
+            )
+
+        else:
+
+            st.write(
+                f"📘 **{subject}** | "
+                f"{activity_type} | "
+                f"{created_at}"
+            )
+
+else:
+
+    st.info(
+        "No study history yet. "
+        "Complete a quiz or generate flashcards."
+    )
+
+
+# ============================================================
+# SMART RECOMMENDATION
+# ============================================================
+
+st.subheader(
+    "💡 Smart Study Recommendation"
+)
 
 
 if quizzes_taken == 0:
 
     recommendation = (
-        "🚀 Start your learning journey by uploading a "
-        "document and generating your first quiz."
+        "🚀 Start by uploading a document and "
+        "generating your first quiz."
     )
 
 elif accuracy >= 90:
 
     recommendation = (
-        "🏆 Outstanding performance! Try Hard difficulty "
-        "questions to challenge yourself further."
+        "🏆 Excellent performance! Try Hard "
+        "difficulty questions and use YouTube "
+        "resources for advanced topics."
     )
 
 elif accuracy >= 80:
 
     recommendation = (
-        "🌟 Great work! You have a strong understanding. "
-        "Try Hard difficulty and create flashcards for revision."
+        "🌟 Great work! Continue with Hard quizzes "
+        "and revise using flashcards."
     )
 
 elif accuracy >= 60:
 
     recommendation = (
-        "📚 You're making good progress. Review your "
-        "incorrect answers and practice with Medium difficulty."
+        "📚 Good progress. Review incorrect answers "
+        "and practice Medium difficulty questions."
     )
 
 else:
 
     recommendation = (
-        "🌱 Focus on understanding the basics first. "
-        "Use Easy quizzes and review your flashcards regularly."
+        "🌱 Focus on the basics. Use Easy quizzes, "
+        "flashcards, and educational videos for revision."
     )
 
 
-st.info(recommendation)
+st.info(
+    recommendation
+)
 
 
 # ============================================================
 # ACHIEVEMENTS
 # ============================================================
 
-st.subheader("🏅 Achievements")
-
+st.subheader(
+    "🏅 Achievements"
+)
 
 achievements = []
 
@@ -1131,14 +1503,14 @@ if quizzes_taken >= 10:
     )
 
 
-if flashcards_generated >= 5:
+if total_flashcards >= 5:
 
     achievements.append(
         "🧠 Flashcard Starter"
     )
 
 
-if flashcards_generated >= 20:
+if total_flashcards >= 20:
 
     achievements.append(
         "📚 Revision Champion"
@@ -1159,14 +1531,7 @@ if accuracy >= 90:
     )
 
 
-if not achievements:
-
-    st.write(
-        "🔒 Complete quizzes and create flashcards "
-        "to unlock achievements!"
-    )
-
-else:
+if achievements:
 
     for achievement in achievements:
 
@@ -1174,98 +1539,20 @@ else:
             achievement
         )
 
-
-# ============================================================
-# LEARNING JOURNEY
-# ============================================================
-
-st.subheader("🚀 Your Learning Journey")
-
-
-journey_progress = min(
-    quizzes_taken / 10,
-    1.0
-)
-
-
-st.progress(
-    journey_progress
-)
-
-
-if quizzes_taken < 10:
-
-    remaining = 10 - quizzes_taken
-
-    st.write(
-        f"🔥 **{quizzes_taken}/10 quizzes completed** "
-        f"— only **{remaining} more** to reach your next milestone!"
-    )
-
-else:
-
-    st.success(
-        "🏆 10 quizzes completed! "
-        "You've reached the learning milestone."
-    )
-
-
-# ============================================================
-# STUDY STATUS
-# ============================================================
-
-st.subheader("📖 Study Status")
-
-
-if accuracy >= 80:
-
-    st.success(
-        "🟢 You are performing strongly. "
-        "Keep challenging yourself."
-    )
-
-elif accuracy >= 60:
-
-    st.warning(
-        "🟡 You are progressing well. "
-        "More revision can improve your score."
-    )
-
-elif accuracy > 0:
-
-    st.error(
-        "🔴 More practice is recommended. "
-        "Review flashcards and retry quizzes."
-    )
-
 else:
 
     st.info(
-        "⚪ No quiz activity yet."
+        "🔒 Complete quizzes and create "
+        "flashcards to unlock achievements!"
     )
 
 
 # ============================================================
-# FINAL MOTIVATION
+# FOOTER
 # ============================================================
 
-if quizzes_taken > 0:
+st.divider()
 
-    st.divider()
-
-    st.markdown(
-        "## 🌟 Keep Going!"
-    )
-
-    st.write(
-        "Every quiz you complete and every flashcard you "
-        "review helps strengthen your learning."
-    )
-
-    st.progress(
-        min(accuracy / 100, 1.0)
-    )
-
-    st.caption(
-        "🧠 Learn • Practice • Review • Improve • Master"
-    )
+st.caption(
+    "🧠 Lumyn-AI • Learn • Practice • Review • Improve • Master"
+)
