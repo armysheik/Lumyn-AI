@@ -1,3 +1,4 @@
+from modules.audio_generator import generate_audio
 import streamlit as st
 import os
 import json
@@ -18,11 +19,34 @@ from database import (
 from modules.pdf_quiz.pdf_extractor import extract_text_from_pdf
 from modules.pdf_quiz.quiz_generator import generate_quiz
 from modules.flashcards.flashcard_generator import generate_flashcards
-from modules.document_processing.txt_extractor import extract_text_from_txt
-from modules.document_processing.docx_extractor import extract_text_from_docx
+
+from modules.document_processing.txt_extractor import (
+    extract_text_from_txt
+)
+
+from modules.document_processing.docx_extractor import (
+    extract_text_from_docx
+)
+
+# ============================================================
+# AUDIO GENERATOR
+# ============================================================
 
 try:
-    from modules.educational_content.youtube_api import search_educational_videos
+    from modules.audio_generator import generate_audio
+    AUDIO_AVAILABLE = True
+except Exception:
+    AUDIO_AVAILABLE = False
+
+
+# ============================================================
+# YOUTUBE
+# ============================================================
+
+try:
+    from modules.educational_content.youtube_api import (
+        search_educational_videos
+    )
     YOUTUBE_AVAILABLE = True
 except Exception:
     YOUTUBE_AVAILABLE = False
@@ -59,6 +83,7 @@ defaults = {
     "document_name": None,
     "extracted_text": "",
     "youtube_results": [],
+    "audio_file": None,
 }
 
 for key, value in defaults.items():
@@ -169,6 +194,7 @@ else:
                     f"❌ YouTube search failed:\n\n{error}"
                 )
 
+
     # --------------------------------------------------------
     # DISPLAY YOUTUBE RESULTS
     # --------------------------------------------------------
@@ -185,6 +211,7 @@ else:
 
                 col1, col2 = st.columns([1, 2])
 
+
                 # ------------------------------------------------
                 # THUMBNAIL
                 # ------------------------------------------------
@@ -197,6 +224,7 @@ else:
                             video["thumbnail_url"],
                             use_container_width=True,
                         )
+
 
                 # ------------------------------------------------
                 # VIDEO DETAILS
@@ -232,8 +260,7 @@ else:
                     if video_url:
 
                         st.markdown(
-                            f"[▶ Watch on YouTube]"
-                            f"({video_url})"
+                            f"[▶ Watch on YouTube]({video_url})"
                         )
 
 
@@ -290,7 +317,23 @@ if uploaded_file is not None:
         f"✅ Uploaded: {uploaded_file.name}"
     )
 
+
+    # --------------------------------------------------------
+    # EMPTY FILE VALIDATION
+    # --------------------------------------------------------
+
+    if uploaded_file.size == 0:
+
+        st.error(
+            "❌ The uploaded file is empty. "
+            "Please choose a file that contains content."
+        )
+
+        st.stop()
+
+
     file_name = uploaded_file.name.lower()
+
 
     # --------------------------------------------------------
     # DETECT FILE TYPE
@@ -312,9 +355,11 @@ if uploaded_file is not None:
 
         file_type = "UNKNOWN"
 
+
     st.info(
         f"📄 File type detected: **{file_type}**"
     )
+
 
     # --------------------------------------------------------
     # TEMPORARY FILE
@@ -329,6 +374,7 @@ if uploaded_file is not None:
         f"uploaded_temp{file_extension}",
     )
 
+
     try:
 
         with open(
@@ -340,7 +386,9 @@ if uploaded_file is not None:
                 uploaded_file.getbuffer()
             )
 
+
         extracted_text = ""
+
 
         # ----------------------------------------------------
         # EXTRACT TEXT
@@ -374,6 +422,7 @@ if uploaded_file is not None:
                     "Unsupported document format."
                 )
 
+
         # ----------------------------------------------------
         # CHECK TEXT
         # ----------------------------------------------------
@@ -388,6 +437,7 @@ if uploaded_file is not None:
                 "the document."
             )
 
+
         st.session_state.extracted_text = (
             extracted_text
         )
@@ -396,9 +446,11 @@ if uploaded_file is not None:
             uploaded_file.name
         )
 
+
         st.success(
             f"✅ {file_type} text extracted successfully!"
         )
+
 
         # ----------------------------------------------------
         # VIEW TEXT
@@ -415,6 +467,7 @@ if uploaded_file is not None:
                 key="extracted_text_view",
             )
 
+
     except Exception as error:
 
         st.session_state.extracted_text = ""
@@ -423,6 +476,19 @@ if uploaded_file is not None:
             f"❌ {file_type} extraction failed:\n\n"
             f"{error}"
         )
+
+
+    finally:
+
+        if os.path.exists(temp_file_path):
+
+            try:
+
+                os.remove(temp_file_path)
+
+            except OSError:
+
+                pass
 
 
 # ============================================================
@@ -439,6 +505,7 @@ extracted_text = st.session_state.extracted_text
 if extracted_text:
 
     st.divider()
+
 
     # ========================================================
     # STUDY ORGANIZATION
@@ -470,6 +537,7 @@ if extracted_text:
 
         selected_subject = subject_option
 
+
     st.info(
         f"Current study subject: "
         f"**{selected_subject}**"
@@ -486,6 +554,7 @@ if extracted_text:
 
     col1, col2, col3 = st.columns(3)
 
+
     # --------------------------------------------------------
     # NUMBER OF QUESTIONS
     # --------------------------------------------------------
@@ -498,6 +567,7 @@ if extracted_text:
             max_value=10,
             value=3,
         )
+
 
     # --------------------------------------------------------
     # DIFFICULTY
@@ -515,6 +585,7 @@ if extracted_text:
             index=1,
         )
 
+
     # --------------------------------------------------------
     # QUIZ TYPE
     # --------------------------------------------------------
@@ -525,10 +596,11 @@ if extracted_text:
             "📝 Select Quiz Type",
             [
                 "MCQ",
-                "True-False",
+                "True/False",
                 "Fill-in-the-Blanks",
             ],
         )
+
 
     st.info(
         f"Selected: **{difficulty}** difficulty | "
@@ -562,6 +634,7 @@ if extracted_text:
                     quiz_type,
                 )
 
+
             # ------------------------------------------------
             # CONVERT JSON STRING
             # ------------------------------------------------
@@ -587,6 +660,7 @@ if extracted_text:
                     quiz.strip()
                 )
 
+
             # ------------------------------------------------
             # VALIDATE
             # ------------------------------------------------
@@ -604,6 +678,7 @@ if extracted_text:
                     "or empty quiz."
                 )
 
+
             # ------------------------------------------------
             # SAVE QUIZ
             # ------------------------------------------------
@@ -614,6 +689,7 @@ if extracted_text:
                 quiz_type=quiz_type,
                 difficulty=difficulty,
             )
+
 
             # ------------------------------------------------
             # SESSION
@@ -637,10 +713,12 @@ if extracted_text:
                 difficulty
             )
 
+
             st.success(
                 f"🎉 {difficulty} {quiz_type} "
                 f"quiz generated successfully!"
             )
+
 
         except Exception as error:
 
@@ -663,6 +741,7 @@ if extracted_text:
         value=selected_subject,
         key="flashcard_subject_input",
     )
+
 
     if flashcard_subject.strip():
 
@@ -705,6 +784,7 @@ if extracted_text:
                     num_flashcards,
                 )
 
+
             # ------------------------------------------------
             # CONVERT JSON STRING
             # ------------------------------------------------
@@ -730,6 +810,7 @@ if extracted_text:
                     flashcards.strip()
                 )
 
+
             # ------------------------------------------------
             # VALIDATE
             # ------------------------------------------------
@@ -747,6 +828,7 @@ if extracted_text:
                     "or empty flashcards."
                 )
 
+
             # ------------------------------------------------
             # SAVE FLASHCARDS
             # ------------------------------------------------
@@ -755,6 +837,7 @@ if extracted_text:
                 flashcards,
                 subject=flashcard_subject,
             )
+
 
             # ------------------------------------------------
             # SAVE ACTIVITY
@@ -767,9 +850,14 @@ if extracted_text:
                     len(flashcards),
                 )
 
-            except Exception:
+            except Exception as error:
 
-                pass
+                st.warning(
+                    "Flashcards were generated successfully, "
+                    "but the activity could not be saved: "
+                    f"{error}"
+                )
+
 
             # ------------------------------------------------
             # SESSION
@@ -783,10 +871,12 @@ if extracted_text:
                 flashcard_subject
             )
 
+
             st.success(
                 f"🎉 {len(flashcards)} flashcards "
                 f"generated successfully!"
             )
+
 
         except Exception as error:
 
@@ -810,6 +900,7 @@ if st.session_state.quiz is not None:
 
     answers = {}
 
+
     # --------------------------------------------------------
     # QUESTIONS
     # --------------------------------------------------------
@@ -829,6 +920,7 @@ if st.session_state.quiz is not None:
             )
         )
 
+
         # ----------------------------------------------------
         # DIFFICULTY
         # ----------------------------------------------------
@@ -839,6 +931,7 @@ if st.session_state.quiz is not None:
                 f"🎯 Difficulty: "
                 f"{question_data['difficulty']}"
             )
+
 
         # ----------------------------------------------------
         # MCQ / TRUE-FALSE
@@ -871,6 +964,7 @@ if st.session_state.quiz is not None:
 
                 answers[i] = selected
 
+
         # ----------------------------------------------------
         # FILL IN THE BLANK
         # ----------------------------------------------------
@@ -881,6 +975,7 @@ if st.session_state.quiz is not None:
                 "✏️ Your answer:",
                 key=f"answer_{i}",
             )
+
 
         st.divider()
 
@@ -896,6 +991,7 @@ if st.session_state.quiz is not None:
     ):
 
         score = 0
+
 
         for i, question_data in enumerate(
             quiz
@@ -915,6 +1011,7 @@ if st.session_state.quiz is not None:
                 )
             ).strip()
 
+
             # ------------------------------------------------
             # DIRECT ANSWER CHECK
             # ------------------------------------------------
@@ -925,6 +1022,7 @@ if st.session_state.quiz is not None:
             ):
 
                 score += 1
+
 
             # ------------------------------------------------
             # ACCEPTED ANSWERS
@@ -957,6 +1055,7 @@ if st.session_state.quiz is not None:
 
                     score += 1
 
+
         # ----------------------------------------------------
         # SAVE SESSION RESULT
         # ----------------------------------------------------
@@ -964,6 +1063,7 @@ if st.session_state.quiz is not None:
         st.session_state.score = score
 
         st.session_state.submitted = True
+
 
         # ----------------------------------------------------
         # SAVE RESULT TO SQLITE
@@ -993,6 +1093,7 @@ if st.session_state.quiz is not None:
                 f"{error}"
             )
 
+
         st.rerun()
 
 
@@ -1010,6 +1111,7 @@ if (
     score = st.session_state.score
 
     total = len(quiz)
+
 
     if total > 0:
 
@@ -1119,6 +1221,7 @@ if st.session_state.flashcards is not None:
         st.session_state.flashcards
     )
 
+
     st.caption(
         f"Subject: "
         f"{st.session_state.flashcard_subject}"
@@ -1152,6 +1255,131 @@ if st.session_state.flashcards is not None:
                         "answer",
                         "",
                     )
+                )
+
+
+# ============================================================
+# AUDIO SUMMARY
+# ============================================================
+
+if extracted_text:
+
+    st.divider()
+
+    st.header("🔊 Audio Study Summary")
+
+    st.write(
+        "Listen to an AI-generated audio version "
+        "of your study material."
+    )
+
+
+    if not AUDIO_AVAILABLE:
+
+        st.warning(
+            "Audio generation is not available. "
+            "Make sure pyttsx3 is installed in the "
+            "active virtual environment."
+        )
+
+    else:
+
+        audio_text = extracted_text.strip()
+
+
+        # Limit extremely large documents so that
+        # text-to-speech does not become unnecessarily long.
+        max_audio_characters = 5000
+
+        if len(audio_text) > max_audio_characters:
+
+            audio_text = (
+                audio_text[:max_audio_characters]
+                + "..."
+            )
+
+            st.caption(
+                "ℹ️ The audio summary is limited to "
+                "the first 5,000 characters."
+            )
+
+
+        if st.button(
+            "🔊 Generate Audio",
+            use_container_width=True,
+            key="generate_audio_button",
+        ):
+
+            try:
+
+                with st.spinner(
+                    "🎙️ Generating audio..."
+                ):
+
+                    audio_file = generate_audio(
+                        audio_text,
+                        os.path.join(
+                            BASE_DIR,
+                            "study_summary.wav"
+                        ),
+                    )
+
+
+                st.session_state.audio_file = (
+                    audio_file
+                )
+
+                st.success(
+                    "🎉 Audio generated successfully!"
+                )
+
+
+            except Exception as error:
+
+                st.session_state.audio_file = None
+
+                st.error(
+                    f"❌ Audio generation failed:\n\n"
+                    f"{error}"
+                )
+
+
+        # ----------------------------------------------------
+        # AUDIO PLAYER
+        # ----------------------------------------------------
+
+        audio_file = st.session_state.audio_file
+
+        if (
+            audio_file
+            and os.path.exists(audio_file)
+        ):
+
+            try:
+
+                with open(
+                    audio_file,
+                    "rb",
+                ) as audio:
+
+                    audio_bytes = audio.read()
+
+
+                st.audio(
+                    audio_bytes,
+                    format="audio/wav",
+                )
+
+                st.caption(
+                    "▶️ Press play to listen to your study material."
+                )
+
+
+            except Exception as error:
+
+                st.error(
+                    f"❌ Could not load audio file: "
+                    f"{error}"
                 )
 
 
@@ -1322,10 +1550,12 @@ if subject_progress:
             )
         )
 
+
         st.write(
             f"**{subject}** — "
             f"{subject_accuracy:.1f}% accuracy"
         )
+
 
         st.progress(
             min(
