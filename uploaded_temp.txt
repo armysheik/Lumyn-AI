@@ -1,0 +1,31 @@
+Introduction to Operating Systems (OS)
+Educational Sample Document for TXT-to-Quiz Generation Testing
+
+1. What is an Operating System?
+An operating system is system software that manages computer hardware and software resources and provides common services for computer programs. It acts as an intermediary between users and the computer hardware. Examples include Windows, macOS, Linux, and Android.
+
+2. Functions of an Operating System
+An operating system performs several key functions, including process management, memory management, file management, device management, and security. It ensures that hardware resources are used efficiently and that multiple programs can run without interfering with one another.
+
+3. Process Management
+A process is a program that is currently being executed. The operating system is responsible for creating, scheduling, and terminating processes. It also manages process synchronization and communication, allowing multiple processes to share resources safely.
+
+4. Memory Management
+Memory management involves keeping track of each byte in a computer's memory and allocating memory to processes when needed. The operating system also handles memory deallocation when a process no longer requires it, preventing memory leaks and ensuring efficient use of RAM.
+
+5. File Management
+The operating system manages files on various storage devices, providing an interface for creating, deleting, reading, and writing files. It also organizes files into directories and controls access permissions to protect data.
+
+6. Device Management
+Device management refers to the operating system's role in controlling and coordinating hardware devices such as printers, keyboards, and disk drives through device drivers. This ensures that hardware devices communicate properly with the rest of the system.
+
+7. CPU Scheduling
+CPU scheduling determines which process runs on the CPU at any given time. Common scheduling algorithms include First-Come-First-Served (FCFS), Shortest Job Next (SJN), Round Robin, and Priority Scheduling. Efficient scheduling improves system performance and responsiveness.
+
+8. Types of Operating Systems
+Operating systems can be classified into several types, including batch operating systems, time-sharing operating systems, distributed operating systems, real-time operating systems, and mobile operating systems. Each type is designed to meet different computing needs.
+
+9. Why Operating Systems are Important
+Operating systems are essential because they allow users to interact with computer hardware without needing to understand its complexities. They enable multitasking, resource sharing, and provide a stable and secure environment for running applications.
+
+End of sample document. This TXT file is intended for testing the Lumyn-AI TXT extraction module.
