@@ -5,10 +5,13 @@ def extract_text_from_pdf(pdf_path):
     """
     Extract text from all pages of a PDF.
     """
+
     reader = PdfReader(pdf_path)
+
     extracted_text = ""
 
     for page in reader.pages:
+
         text = page.extract_text()
 
         if text:
@@ -18,6 +21,7 @@ def extract_text_from_pdf(pdf_path):
 
 
 if __name__ == "__main__":
+
     pdf_path = "data/sample_pdfs/sample.pdf"
 
     text = extract_text_from_pdf(pdf_path)
